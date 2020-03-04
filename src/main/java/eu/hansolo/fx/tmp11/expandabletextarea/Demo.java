@@ -46,7 +46,7 @@ public class Demo extends Application {
     @Override public void init() {
         final String text = "";
         header             = new Label("Header");
-        expandableTextArea = new ExpandableTextArea(text, true, 3, 100);
+        expandableTextArea = new ExpandableTextArea(text, true, 3, 300);
         footer             = new Label("Footer");
         toggleButton       = new ToggleButton("Not Expandable");
         button1            = new Button("Cancel");
@@ -69,13 +69,14 @@ public class Demo extends Application {
     @Override public void start(Stage stage) {
         VBox pane = new VBox(10, header, expandableTextArea, footer, buttonBox);
 
-        Scene scene = new Scene(pane, 600, 400);
+        Scene scene = new Scene(pane, 200, 400);
 
         stage.setTitle("ExpandableTextArea");
         stage.setScene(scene);
         stage.show();
 
-        expandableTextArea.setText("asdfjk ölajks dfölkajs dfölkj asdöfklj asdöjkl fasödjkl földsj föladjks fölkjs dföladjs fölkjads öfkl löadjks fölkajs dfölkadjs fölkj asödfjk lökdfjs ölkadjs föladjksaldksjf aösdkjf aösdjk f ");
+        expandableTextArea.setText("The process of learning the Java language can be a tough task for you, and they watch the videos for hours and hours to learn java programming before they proceed to the actual writing. Therefore, it is important to enjoy the process of learning, and you should have the patience to learn java programming. \n" +
+                                   "You have to keep in mind that you can not understand everything for the first time. So, you have to figure out the possible and best ways to learn a programming language. Always try to neglect the negativity during your learning process so that you can easily concentrate on the learning methods.");
     }
 
     @Override public void stop() {

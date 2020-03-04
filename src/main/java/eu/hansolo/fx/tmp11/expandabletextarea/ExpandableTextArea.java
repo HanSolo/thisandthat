@@ -16,13 +16,9 @@
 
 package eu.hansolo.fx.tmp11.expandabletextarea;
 
-import javafx.beans.binding.Bindings;
-import javafx.beans.binding.BooleanBinding;
 import javafx.beans.binding.StringBinding;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.BooleanPropertyBase;
-import javafx.beans.property.DoubleProperty;
-import javafx.beans.property.DoublePropertyBase;
 import javafx.beans.property.IntegerProperty;
 import javafx.beans.property.IntegerPropertyBase;
 import javafx.beans.property.ReadOnlyIntegerProperty;
@@ -31,27 +27,25 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.geometry.Rectangle2D;
 import javafx.scene.control.Label;
-import javafx.scene.control.ScrollBar;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextFormatter;
 import javafx.scene.control.skin.TextAreaSkin;
-import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 
 
 public class ExpandableTextArea extends StackPane {
-    private final Character       ENTER = (char) 10;
-    private       int             maxNoOfCharacters;
-    private       double          lineHeight;
-    private       Label           label;
-    private       BooleanBinding  showing;
-    private       BooleanProperty fixedHeight;
-    private       BooleanProperty expandable;
-    private       IntegerProperty compactNoOfLines;
-    private       IntegerProperty expandedNoOfLines;
-    private       StackPane       labelPane;
-    private       TextArea        textArea;
-    private       TextAreaSkin    textAreaSkin;
+    private static final Character       ENTER = (char) 10;
+    private              int             maxNoOfCharacters;
+    private              double          lineHeight;
+    private              Label           label;
+    private              BooleanProperty fixedHeight;
+    private              BooleanProperty expandable;
+    private              IntegerProperty compactNoOfLines;
+    private              IntegerProperty expandedNoOfLines;
+    private              StackPane       labelPane;
+    private              TextArea        textArea;
+    private              TextAreaSkin    textAreaSkin;
+    private              int             initialNoOfLines;
 
 
     // ******************** Constructors *******************************
@@ -88,14 +82,9 @@ public class ExpandableTextArea extends StackPane {
         };
         this.expandable        = new BooleanPropertyBase(expandable) {
             @Override protected void invalidated() {
+                updateHeight(textArea.getText());
                 if (get()) {
-                        /* old approach: set to preferred height
-                        label.setMaxHeight(-1);
-                        textArea.setMaxHeight(-1);
-                        */
-                    // new approach: set to defined height
                     setToExpandedHeight();
-                    //
                     textArea.setVisible(true);
                     textArea.setManaged(true);
                 } else {
@@ -103,7 +92,6 @@ public class ExpandableTextArea extends StackPane {
                     textArea.setVisible(false);
                     textArea.setManaged(false);
                 }
-                updateHeight(textArea.getText());
             }
             @Override public Object getBean() { return ExpandableTextArea.this; }
             @Override public String getName() { return "expandable"; }
@@ -117,6 +105,7 @@ public class ExpandableTextArea extends StackPane {
             @Override public Object getBean() { return ExpandableTextArea.this; }
             @Override public String getName() { return "expandedNoOfLines"; }
         };
+        this.initialNoOfLines  = 1;
 
         initGraphics(text);
         registerListeners();
@@ -157,7 +146,7 @@ public class ExpandableTextArea extends StackPane {
         labelPane.setPrefWidth(Double.MAX_VALUE);
         labelPane.setAlignment(Pos.TOP_LEFT);
         labelPane.setPadding(new Insets(5, 6, 6, 9));
-
+        
         getChildren().addAll(labelPane, textArea);
     }
 
@@ -188,26 +177,10 @@ public class ExpandableTextArea extends StackPane {
 
         // Binding the container width/height to the TextArea width.
         labelPane.maxWidthProperty().bind(textArea.widthProperty());
-
-        if (null != getScene()) {
-            initBinding();
-        } else {
-            sceneProperty().addListener((o1, ov1, nv1) -> {
-                if (null == nv1) { return; }
-                if (null != getScene().getWindow()) {
-                    initBinding();
-                } else {
-                    sceneProperty().get().windowProperty().addListener((o2, ov2, nv2) -> {
-                        if (null == nv2) { return; }
-                        initBinding();
-                    });
-                }
-            });
-        }
     }
 
 
-    // ******************** Methods *******************************************
+    // ******************** Public Methods ************************************
     public boolean isFixedHeight() { return fixedHeight.get(); }
     public void setFixedHeight(final boolean fixedHeight) { this.fixedHeight.set(fixedHeight); }
     public BooleanProperty fixedHeightProperty() { return fixedHeight; }
@@ -233,14 +206,52 @@ public class ExpandableTextArea extends StackPane {
     public int getExpandedNoOfLines() { return expandedNoOfLines.get(); }
     public ReadOnlyIntegerProperty expandedNoOfLinesProperty() { return expandedNoOfLines; }
 
+    public void setInitialNoOfLines(final int initialNoOfLines) {
+        this.initialNoOfLines = initialNoOfLines;
+    }
+
+    public int getNoOfLines() {
+        if (null == textAreaSkin) { textAreaSkin = (TextAreaSkin) textArea.getSkin(); }
+        int noOfLines = getCompactNoOfLines();
+        if (textAreaSkin != null) {
+            int textLength = textArea.getText().length();
+            if (textLength >= 1) {
+                Rectangle2D startBounds;
+                Rectangle2D endBounds;
+                try {
+                    startBounds = textAreaSkin.getCharacterBounds(1);
+                    endBounds   = textAreaSkin.getCharacterBounds(textLength);
+                } catch (IndexOutOfBoundsException e) {
+                    startBounds = new Rectangle2D(textAreaSkin.getCaretBounds().getMinX(), textAreaSkin.getCaretBounds().getMinX(), textAreaSkin.getCaretBounds().getWidth(), textAreaSkin.getCaretBounds().getHeight());
+                    endBounds   = textAreaSkin.getCharacterBounds(textLength);
+                }
+                if (null != startBounds && null != endBounds) {
+                    double lineHeight = endBounds.getHeight();
+                    noOfLines = (clamp(1, Integer.MAX_VALUE, (int) ((endBounds.getMaxY() - (null == startBounds ? 0 : startBounds.getMinY())) / (lineHeight - 2))));
+                }
+            }
+        }
+        return noOfLines;
+    }
+
+
+    // ******************** Private Methods ***********************************
     private void updateHeight(final String text) {
-        if (isExpandable() && isFocused()) {
+        if (null == textAreaSkin) { textAreaSkin = (TextAreaSkin) textArea.getSkin(); }
+        if (isExpandable()) {
             int textLength = text.length();
             if (textLength < 1) {
                 expandedNoOfLines.set(1);
             } else {
-                Rectangle2D startBounds = textAreaSkin.getCharacterBounds(1);
-                Rectangle2D endBounds   = textAreaSkin.getCharacterBounds(text.length());
+                Rectangle2D startBounds;
+                Rectangle2D endBounds;
+                try {
+                    startBounds = textAreaSkin.getCharacterBounds(1);
+                    endBounds   = textAreaSkin.getCharacterBounds(textLength);
+                } catch (IndexOutOfBoundsException e) {
+                    startBounds = new Rectangle2D(textAreaSkin.getCaretBounds().getMinX(), textAreaSkin.getCaretBounds().getMinX(), textAreaSkin.getCaretBounds().getWidth(), textAreaSkin.getCaretBounds().getHeight());
+                    endBounds   = textAreaSkin.getCharacterBounds(textLength);
+                }
                 if (null == startBounds || null == endBounds) {
                     expandedNoOfLines.set(1);
                 } else {
@@ -250,24 +261,6 @@ public class ExpandableTextArea extends StackPane {
             }
             setToExpandedHeight();
         }
-    }
-
-    private void initBinding() {
-        showing = Bindings.createBooleanBinding(() -> {
-            if (getScene() != null && getScene().getWindow() != null) {
-                return getScene().getWindow().isShowing();
-            } else {
-                return false;
-            }
-        }, sceneProperty(), getScene().windowProperty(), getScene().getWindow().showingProperty());
-
-        showing.addListener((o, ov, nv) -> {
-            if (nv) {
-                ScrollBar verticalScrollBar = (ScrollBar) lookup(".scroll-bar:vertical");
-                if (null != verticalScrollBar) { verticalScrollBar.setDisable(true); }
-                textAreaSkin = (TextAreaSkin) textArea.getSkin();
-            }
-        });
     }
 
     private int clamp(final int min, final int max, final int value) {
@@ -287,9 +280,10 @@ public class ExpandableTextArea extends StackPane {
     }
 
     private void setToExpandedHeight() {
-        double fixedHeight    = getCompactNoOfLines() * lineHeight;
-        double expandedHeight = getExpandedNoOfLines() * lineHeight;
-        double height         = expandedHeight < fixedHeight ? fixedHeight : expandedHeight;
+        double height = getExpandedNoOfLines() * lineHeight;
+        if (getText().length() > 16 && getExpandedNoOfLines() == 1) {
+            height = initialNoOfLines * lineHeight;
+        }
         label.setMaxHeight(height);
         textArea.setMinHeight(height);
         textArea.setMaxHeight(height);
