@@ -16,6 +16,9 @@
 
 package eu.hansolo.fx.tmp11.expandabletextarea;
 
+import javafx.application.Platform;
+import javafx.beans.binding.Bindings;
+import javafx.beans.binding.BooleanBinding;
 import javafx.beans.binding.StringBinding;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.BooleanPropertyBase;
@@ -26,16 +29,23 @@ import javafx.beans.property.StringProperty;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.geometry.Rectangle2D;
+import javafx.scene.Node;
 import javafx.scene.control.Label;
+import javafx.scene.control.ScrollBar;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextFormatter;
 import javafx.scene.control.skin.TextAreaSkin;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
+import javafx.scene.layout.VBox;
+import javafx.scene.text.Font;
 
 
-public class ExpandableTextArea extends StackPane {
+public class ExpandableTextArea extends VBox {
     private static final Character       ENTER = (char) 10;
     private              int             maxNoOfCharacters;
+    private              int             characterThreshold;
     private              double          lineHeight;
     private              Label           label;
     private              BooleanProperty fixedHeight;
@@ -45,42 +55,45 @@ public class ExpandableTextArea extends StackPane {
     private              StackPane       labelPane;
     private              TextArea        textArea;
     private              TextAreaSkin    textAreaSkin;
+    private              Label           limitationLabel;
     private              int             initialNoOfLines;
+    private              BooleanBinding  showing;
 
 
     // ******************** Constructors *******************************
     public ExpandableTextArea() {
-        this("", true, false, 2, Integer.MAX_VALUE);
+        this("", true, false, 2, Integer.MAX_VALUE, -1);
     }
     public ExpandableTextArea(final String text) {
-        this(text, true, false, 2, Integer.MAX_VALUE);
+        this(text, true, false, 2, Integer.MAX_VALUE, -1);
     }
     public ExpandableTextArea(final String text, final int compactNoOfLines) {
-        this(text, true, false, compactNoOfLines, Integer.MAX_VALUE);
+        this(text, true, false, compactNoOfLines, Integer.MAX_VALUE, -1);
     }
     public ExpandableTextArea(final String text, final boolean expandable, final int compactNoOfLines) {
-        this(text, expandable, false, compactNoOfLines, Integer.MAX_VALUE);
+        this(text, expandable, false, compactNoOfLines, Integer.MAX_VALUE, -1);
     }
-    public ExpandableTextArea(final String text, final boolean expandable, final int compactNoOfLines, final int maxNoOfCharacters) {
-        this(text, expandable, false, compactNoOfLines, maxNoOfCharacters);
+    public ExpandableTextArea(final String text, final boolean expandable, final int compactNoOfLines, final int maxNoOfCharacters, final int characterThreshold) {
+        this(text, expandable, false, compactNoOfLines, maxNoOfCharacters, characterThreshold);
     }
     public ExpandableTextArea(final String text, final boolean expandable, final boolean fixedHeight) {
-        this(text, expandable, fixedHeight, 2, Integer.MAX_VALUE);
+        this(text, expandable, fixedHeight, 2, Integer.MAX_VALUE, -1);
     }
     public ExpandableTextArea(final String text, final boolean expandable, final boolean fixedHeight, final int compactNoOfLines) {
-        this(text, expandable, fixedHeight, compactNoOfLines, Integer.MAX_VALUE);
+        this(text, expandable, fixedHeight, compactNoOfLines, Integer.MAX_VALUE, -1);
     }
-    public ExpandableTextArea(final String text, final boolean expandable, final boolean fixedHeight, final int compactNoOfLines, final int maxNoOfCharacters) {
+    public ExpandableTextArea(final String text, final boolean expandable, final boolean fixedHeight, final int compactNoOfLines, final int maxNoOfCharacters, final int characterThreshold) {
         super();
 
-        this.maxNoOfCharacters = clamp(5, Integer.MAX_VALUE, maxNoOfCharacters);
-        this.lineHeight        = 17;
-        this.fixedHeight       = new BooleanPropertyBase(fixedHeight) {
+        this.maxNoOfCharacters  = clamp(5, Integer.MAX_VALUE, maxNoOfCharacters);
+        this.characterThreshold = characterThreshold;
+        this.lineHeight         = 17;
+        this.fixedHeight        = new BooleanPropertyBase(fixedHeight) {
             @Override protected void invalidated() { updateHeight(textArea.getText()); }
             @Override public Object getBean() { return ExpandableTextArea.this; }
             @Override public String getName() { return "fixedHeight"; }
         };
-        this.expandable        = new BooleanPropertyBase(expandable) {
+        this.expandable         = new BooleanPropertyBase(expandable) {
             @Override protected void invalidated() {
                 updateHeight(textArea.getText());
                 if (get()) {
@@ -96,16 +109,16 @@ public class ExpandableTextArea extends StackPane {
             @Override public Object getBean() { return ExpandableTextArea.this; }
             @Override public String getName() { return "expandable"; }
         };
-        this.compactNoOfLines  = new IntegerPropertyBase(compactNoOfLines) {
+        this.compactNoOfLines   = new IntegerPropertyBase(compactNoOfLines) {
             @Override protected void invalidated() { updateHeight(textArea.getText()); }
             @Override public Object getBean() { return ExpandableTextArea.this; }
             @Override public String getName() { return "noOfRows"; }
         };
-        this.expandedNoOfLines = new IntegerPropertyBase(1) {
+        this.expandedNoOfLines  = new IntegerPropertyBase(1) {
             @Override public Object getBean() { return ExpandableTextArea.this; }
             @Override public String getName() { return "expandedNoOfLines"; }
         };
-        this.initialNoOfLines  = 1;
+        this.initialNoOfLines   = 1;
 
         initGraphics(text);
         registerListeners();
@@ -132,6 +145,9 @@ public class ExpandableTextArea extends StackPane {
                 change.setText(allowedText);
                 change.setRange(0, change.getControlText().length());
             }
+            if (Integer.MAX_VALUE != maxNoOfCharacters) {
+                enableNode(limitationLabel, noOfCharacters >= (maxNoOfCharacters - characterThreshold - 1));
+            }
             return change;
         }));
 
@@ -146,13 +162,26 @@ public class ExpandableTextArea extends StackPane {
         labelPane.setPrefWidth(Double.MAX_VALUE);
         labelPane.setAlignment(Pos.TOP_LEFT);
         labelPane.setPadding(new Insets(5, 6, 6, 9));
-        
-        getChildren().addAll(labelPane, textArea);
+
+        StackPane pane = new StackPane(labelPane, textArea);
+        pane.getStyleClass().add("text-area-pane");
+
+        limitationLabel = new Label(" characters left");
+        limitationLabel.getStyleClass().add("limitation-label");
+        limitationLabel.setFont(Font.font(10));
+
+        enableNode(limitationLabel, maxNoOfCharacters != Integer.MAX_VALUE);
+
+        setSpacing(5);
+        getChildren().addAll(pane, limitationLabel);
     }
 
     private void registerListeners() {
         textArea.widthProperty().addListener(o -> updateHeight(textArea.getText()));
-        textArea.textProperty().addListener(o -> updateHeight(textArea.getText()));
+        textArea.textProperty().addListener(o -> {
+            Platform.runLater(() -> limitationLabel.setText((maxNoOfCharacters - textArea.getText().length() - 1) + " characters left"));
+            updateHeight(textArea.getText());
+        });
         label.heightProperty().addListener(o -> updateHeight(textArea.getText()));
     }
 
@@ -177,6 +206,42 @@ public class ExpandableTextArea extends StackPane {
 
         // Binding the container width/height to the TextArea width.
         labelPane.maxWidthProperty().bind(textArea.widthProperty());
+
+        limitationLabel.prefWidthProperty().bind(textArea.widthProperty());
+
+        if (null != getScene()) {
+            initShowing();
+        } else {
+            sceneProperty().addListener((o1, ov1, nv1) -> {
+                if (null == nv1) { return; }
+                if (null != getScene().getWindow()) {
+                    initShowing();
+                } else {
+                    sceneProperty().get().windowProperty().addListener((o2, ov2, nv2) -> {
+                        if (null == nv2) { return; }
+                        initShowing();
+                    });
+                }
+            });
+        }
+    }
+
+    private void initShowing() {
+        showing = Bindings.createBooleanBinding(() -> {
+            if (getScene() != null && getScene().getWindow() != null) {
+                return getScene().getWindow().isShowing();
+            } else {
+                return false;
+            }
+        }, sceneProperty(), getScene().windowProperty(), getScene().getWindow().showingProperty());
+
+        showing.addListener(ob -> {
+            if (showing.get()) {
+                ScrollPane scrollPane = (ScrollPane)textArea.lookup(".scroll-pane");
+                scrollPane.hbarPolicyProperty().setValue(ScrollPane.ScrollBarPolicy.NEVER);
+                scrollPane.vbarPolicyProperty().setValue(ScrollPane.ScrollBarPolicy.NEVER);
+            }
+        });
     }
 
 
@@ -205,6 +270,18 @@ public class ExpandableTextArea extends StackPane {
 
     public int getExpandedNoOfLines() { return expandedNoOfLines.get(); }
     public ReadOnlyIntegerProperty expandedNoOfLinesProperty() { return expandedNoOfLines; }
+
+    public int getMaxNoOfCharacters() { return maxNoOfCharacters; }
+    public void setMaxNoOfCharacters(final int maxNoOfCharacters) {
+        this.maxNoOfCharacters = clamp(5, Integer.MAX_VALUE, maxNoOfCharacters);
+        if (Integer.MAX_VALUE == this.maxNoOfCharacters) {
+            characterThreshold = -1;
+        }
+        enableNode(limitationLabel, this.maxNoOfCharacters != Integer.MAX_VALUE);
+    }
+
+    public int getCharacterThreshold() { return characterThreshold; }
+    public void setCharacterThreshold(final int characterThreshold) { this.characterThreshold = Integer.MAX_VALUE == maxNoOfCharacters ? -1 : clamp(0, maxNoOfCharacters, characterThreshold); }
 
     public void setInitialNoOfLines(final int initialNoOfLines) {
         this.initialNoOfLines = initialNoOfLines;
@@ -290,5 +367,10 @@ public class ExpandableTextArea extends StackPane {
         textArea.setPrefHeight(height);
         textArea.setPrefRowCount(getExpandedNoOfLines());
         requestLayout();
+    }
+
+    private void enableNode(final Node node, final boolean enable) {
+        node.setVisible(enable);
+        node.setManaged(enable);
     }
 }

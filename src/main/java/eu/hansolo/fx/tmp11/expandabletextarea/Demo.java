@@ -46,7 +46,7 @@ public class Demo extends Application {
     @Override public void init() {
         final String text = "";
         header             = new Label("Header");
-        expandableTextArea = new ExpandableTextArea(text, true, 3, 300);
+        expandableTextArea = new ExpandableTextArea(text, true, 3, 300, 50);
         footer             = new Label("Footer");
         toggleButton       = new ToggleButton("Not Expandable");
         button1            = new Button("Cancel");
