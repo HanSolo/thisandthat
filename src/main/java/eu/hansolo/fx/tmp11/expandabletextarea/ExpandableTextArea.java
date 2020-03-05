@@ -41,9 +41,14 @@ import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.text.Font;
 
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 
 public class ExpandableTextArea extends VBox {
-    private static final Character       ENTER = (char) 10;
+    private static final Pattern         PATTERN = Pattern.compile("\\R");
+    private static final Matcher         MATCHER = PATTERN.matcher("");
+    private static final Character       ENTER   = (char) 10;
     private              int             maxNoOfCharacters;
     private              int             characterThreshold;
     private              double          lineHeight;
@@ -336,6 +341,10 @@ public class ExpandableTextArea extends VBox {
                     expandedNoOfLines.set(clamp(1, Integer.MAX_VALUE, (int) ((endBounds.getMaxY() - (null == startBounds ? 0 : startBounds.getMinY())) / (lineHeight - 2))));
                 }
             }
+            MATCHER.reset(text);
+            int lineBreaks = 0;
+            while (MATCHER.find()) { lineBreaks++; }
+            if (getExpandedNoOfLines() == lineBreaks) { expandedNoOfLines.set(getExpandedNoOfLines() + 1); }
             setToExpandedHeight();
         }
     }
